@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>ChessBoard.qml</file>
+        <file>CellDelegate.qml</file>
+    </qresource>
+</RCC>
