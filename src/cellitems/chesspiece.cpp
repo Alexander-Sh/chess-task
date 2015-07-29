@@ -1,3 +1,5 @@
+#include <stdexcept>
+
 #include "chesspiece.h"
 #include "kingpiece.h"
 #include "knightpiece.h"
