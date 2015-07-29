@@ -3,6 +3,7 @@ import QtQuick.Controls 1.3
 import QtQuick.Window 2.2
 import QtQuick.Dialogs 1.2
 import QtQuick.Layouts 1.1
+import QtQml.StateMachine 1.0
 
 ApplicationWindow {
     title: qsTr("Chess")
@@ -14,10 +15,6 @@ ApplicationWindow {
         Menu {
             title: qsTr("&File")
             MenuItem {
-                text: qsTr("&Open")
-                onTriggered: console.log("OPEN");
-            }
-            MenuItem {
                 text: qsTr("E&xit")
                 onTriggered: Qt.quit();
             }
@@ -27,13 +24,40 @@ ApplicationWindow {
             RowLayout {
                 anchors.fill: parent
                 ToolButton {
-                    //iconSource: "new.png"
+                    id: newGameToolButton
                     text: "New game"
+                    onClicked: boardModel.startGame()
                 }
                 ToolButton {
-                    //iconSource: "open.png"
-                    text: "Load game"
+                    id: stopGameToolButton
+                    text: "Stop game"
+                    onClicked: boardModel.stopGame()
+                    visible: false
                 }
+                ToolButton {
+                    id: loadGameToolButton
+                    text: "Load game"
+                    onClicked: boardModel.loadGame()
+                }
+                ToolButton {
+                    id: saveGameToolButton
+                    text: "Save game"
+                    visible: false
+                    onClicked: boardModel.saveGame()
+                }
+                ToolButton {
+                    id: prevGameToolButton
+                    text: "Prev"
+                    visible: false
+                    onClicked: boardModel.prevStep()
+                }
+                ToolButton {
+                    id: nextGameToolButton
+                    text: "Next"
+                    visible: false
+                    onClicked: boardModel.nextStep()
+                }
+
                 Item { Layout.fillWidth: true }
             }
         }
@@ -69,4 +93,68 @@ ApplicationWindow {
         }
     }
 
+    StateMachine {
+        id: stateMachine
+        initialState: s1
+        running: true
+        State {
+            id: s1
+
+            SignalTransition {
+                targetState: s2
+                signal: newGameToolButton.clicked
+            }
+            SignalTransition {
+                targetState: s3
+                signal: boardModel.gameLoaded
+            }
+
+            onEntered: {
+                newGameToolButton.visible = true;
+                loadGameToolButton.visible = true;
+            }
+            onExited: {
+                newGameToolButton.visible = false;
+                loadGameToolButton.visible = false;
+            }
+        }
+
+        State {
+            id: s2
+
+            SignalTransition {
+                targetState: s1
+                signal: stopGameToolButton.clicked
+            }
+            onEntered: {
+                stopGameToolButton.visible = true;
+                saveGameToolButton.visible = true;
+            }
+
+            onExited: {
+                stopGameToolButton.visible = false;
+                saveGameToolButton.visible = false;
+            }
+        }
+        State {
+            id: s3
+            SignalTransition {
+                targetState: s2
+                signal: newGameToolButton.clicked
+            }
+            onEntered: {
+                newGameToolButton.visible = true;
+                loadGameToolButton.visible = true;
+                prevGameToolButton.visible = true;
+                nextGameToolButton.visible = true;
+            }
+
+            onExited: {
+                newGameToolButton.visible = false;
+                loadGameToolButton.visible = false;
+                prevGameToolButton.visible = false;
+                nextGameToolButton.visible = false;
+            }
+        }
+    }
 }

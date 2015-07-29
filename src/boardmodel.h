@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QSharedPointer>
+#include <QJsonArray>
 
 #include "cellitems/chesspiece.h"
 
@@ -26,24 +27,34 @@ public:
      Q_INVOKABLE bool isSelectionPosible(int cellIndex) const;
      Q_INVOKABLE bool move(int oldCell, int newCell);
 
-     void initializeBoard();
-
-     void startGame();
-     void stopGame();
+     Q_INVOKABLE void startGame();
+     Q_INVOKABLE void stopGame();
+     Q_INVOKABLE void loadGame();
+     Q_INVOKABLE void saveGame();
+     Q_INVOKABLE void nextStep();
+     Q_INVOKABLE void prevStep();
 
 signals:
      void gameFinished(QString player);
+     void gameLoaded();
 
 private:
+     void initializeBoard();
      bool isCellEmpty(int cellIndex) const;
      bool hasObstaclesOnTheWay(int firstIndex, int secondIndex) const;
      void loadBoardFromJSON(const QJsonObject& data);
+     QJsonObject saveBoardToJSON() const;
      void moveChessPiece(int oldCell, int newCell);
+     void rememberBoard();
+     void refreshBoard();
+     void clearHistory();
 
 private:
     QMap<int, QSharedPointer<ChessPiece>> m_board;
     PieceColor m_currentPlayer;
     bool m_isGameOn;
+    QJsonArray m_gameHistory;
+    int m_step;
 };
 
 #endif // BOARDMODEL_H

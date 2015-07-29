@@ -5,14 +5,17 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QFileDialog>
+#include <QVariant>
 #include <QDebug>
 
 BoardModel::BoardModel(QObject *parent)
     : QAbstractListModel(parent)
     , m_currentPlayer(PieceColor::White)
-    , m_isGameOn(true)
+    , m_isGameOn(false)
+    , m_step(-1)
 {
-    initializeBoard();
+
 }
 
 QVariant BoardModel::data(const QModelIndex &index, int role) const
@@ -51,7 +54,6 @@ bool BoardModel::isMovePossible(int oldCell, int newCell) const
     if(!m_isGameOn)
         return false;
 
-    qDebug() << "isMovePossible:" << oldCell << newCell;
     if(isCellEmpty(oldCell))
         return false;
 
@@ -108,13 +110,12 @@ bool BoardModel::move(int oldCell, int newCell)
             m_isGameOn = false;
         }
         m_currentPlayer = m_currentPlayer == PieceColor::White ? PieceColor::Black : PieceColor::White;
-
+        rememberBoard();
     } catch(std::exception& e) {
         qDebug() << e.what();
         Q_ASSERT_X(false, "BoardModel", e.what());
         return false;
     }
-
     return true;
 }
 
@@ -135,13 +136,76 @@ void BoardModel::initializeBoard()
 
 void BoardModel::startGame()
 {
+    qDebug() << "startgame";
     initializeBoard();
     m_isGameOn = true;
+    refreshBoard();
+    clearHistory();
+    rememberBoard();
 }
 
 void BoardModel::stopGame()
 {
+    m_board.clear();
+    refreshBoard();
     m_isGameOn = false;
+}
+
+void BoardModel::loadGame()
+{
+    QString filePath = QFileDialog::getOpenFileName(0, "ChessGame", QDir::homePath());
+    QFile loadFile(filePath);
+
+    if (!loadFile.open(QIODevice::ReadOnly)) {
+        qWarning("Couldn't open save file.");
+        return ;
+    }
+
+    QByteArray saveData = loadFile.readAll();
+
+    QJsonDocument loadDoc(QJsonDocument::fromJson(saveData));
+    m_gameHistory = loadDoc.array();
+    if(m_gameHistory.count() > 0) {
+        m_step = 0;
+        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+        emit gameLoaded();
+        refreshBoard();
+    }
+}
+
+void BoardModel::saveGame()
+{
+    QString filePath = QFileDialog::getSaveFileName(0, "ChessGame", QDir::homePath(), "json");
+    if(!filePath.isEmpty()) {
+        filePath += ".json";
+
+        QFile saveFile(filePath);
+
+        if (!saveFile.open(QIODevice::WriteOnly)) {
+            qWarning("Couldn't open save file.");
+            return ;
+        }
+
+        QJsonDocument saveDoc(m_gameHistory);
+        saveFile.write(saveDoc.toJson());
+    }
+    qDebug() << filePath;
+}
+
+void BoardModel::nextStep()
+{
+    if(m_step < m_gameHistory.count() - 1) {
+        ++m_step;
+        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+    }
+}
+
+void BoardModel::prevStep()
+{
+    if(m_step > 0) {
+        --m_step;
+        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+    }
 }
 
 bool BoardModel::isCellEmpty(int cellIndex) const
@@ -194,6 +258,19 @@ void BoardModel::loadBoardFromJSON(const QJsonObject &data)
         const int cellIndex = it.key().toInt();
         m_board.insert(cellIndex, QSharedPointer<ChessPiece>(ChessPiece::createChessPiece(type, color, cellIndex)));
     }
+    refreshBoard();
+}
+
+QJsonObject BoardModel::saveBoardToJSON() const
+{
+    QJsonObject result;
+    for(auto it = m_board.constBegin(); it != m_board.constEnd(); ++it) {
+        QJsonObject piece;
+        piece["piece"] = static_cast<int>(it.value()->type());
+        piece["color"] = static_cast<int>(it.value()->color());
+        result[QString::number(it.key())] = piece;
+    }
+    return result;
 }
 
 void BoardModel::moveChessPiece(int oldCell, int newCell)
@@ -205,5 +282,20 @@ void BoardModel::moveChessPiece(int oldCell, int newCell)
     m_board.remove(oldCell);
     emit dataChanged(index(oldCell), index(oldCell));
     emit dataChanged(index(newCell), index(newCell));
+}
+
+void BoardModel::rememberBoard()
+{
+    m_gameHistory.append(saveBoardToJSON());
+}
+
+void BoardModel::refreshBoard()
+{
+    emit dataChanged(index(0), index(Constants::boardTotalSize-1));
+}
+
+void BoardModel::clearHistory()
+{
+    m_gameHistory = QJsonArray();
 }
 

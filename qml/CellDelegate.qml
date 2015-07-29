@@ -30,12 +30,6 @@ Item {
         }
     }
 
-    Text {
-        x: 5;
-        text: model.index
-        anchors.horizontalCenter: parent.horizontalCenter
-    }
-
     MouseArea {
         id: frameMouseArea
         anchors {
@@ -51,8 +45,6 @@ Item {
                 boardModel.move(chessGrid.currentIndex, index);
                 chessGrid.currentIndex = -1;
             }
-
-            //console.log('CurrentItem2',chessGrid.currentIndex);
         }
     }
 }
