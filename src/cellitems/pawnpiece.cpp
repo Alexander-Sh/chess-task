@@ -22,11 +22,18 @@ bool PawnPiece::isMovePossible(int newCell) const
     const int newX = ChessPiece::positionX(newCell);
     const int newY = ChessPiece::positionY(newCell);
     const int allowStep = m_firstStep ? 2 : 1;
+    const int delta = positionY()- newY;
 
     if(newX != positionX())
         return false;
 
-    if(Utils::abs(positionY()- newY) > allowStep)
+    if(Utils::abs(delta) > allowStep)
+        return false;
+
+    if(color() == PieceColor::Black && delta > 0)
+        return false;
+
+    if(color() == PieceColor::White && delta < 0)
         return false;
 
     return true;
@@ -36,10 +43,18 @@ bool PawnPiece::isAtackPossible(int newCell) const
 {
     const int newX = ChessPiece::positionX(newCell);
     const int newY = ChessPiece::positionY(newCell);
+    const int delta = positionY()- newY;
 
     if(newX == positionX())
         return false;
-    if(Utils::abs(positionY()- newY) > 1 || Utils::abs(positionX()- newX) > 1)
+
+    if(Utils::abs(delta) > 1 || Utils::abs(positionX()- newX) > 1)
+        return false;
+
+    if(color() == PieceColor::Black && delta > 0)
+        return false;
+
+    if(color() == PieceColor::White && delta < 0)
         return false;
 
     return true;
