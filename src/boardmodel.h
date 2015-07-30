@@ -42,10 +42,11 @@ private:
      void initializeBoard();
      bool isCellEmpty(int cellIndex) const;
      bool hasObstaclesOnTheWay(int firstIndex, int secondIndex) const;
-     void loadBoardFromJSON(const QJsonObject& data);
-     QJsonObject saveBoardToJSON() const;
+     void loadBoardFromJSON(const QJsonArray &data);
+     QJsonArray saveBoardToJSON() const;
+     QJsonObject serializeCell(int cellIndex) const;
+     void deserializeCell(const QJsonObject &obj);
      void moveChessPiece(int oldCell, int newCell);
-     void rememberBoard();
      void refreshBoard();
      void clearHistory();
 
@@ -53,7 +54,7 @@ private:
     QMap<int, QSharedPointer<ChessPiece>> m_board;
     PieceColor m_currentPlayer;
     bool m_isGameOn;
-    QJsonArray m_gameHistory;
+    QJsonArray m_moveHistory;
     int m_step;
 };
 

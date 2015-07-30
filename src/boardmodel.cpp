@@ -1,7 +1,9 @@
 #include "boardmodel.h"
 #include "cellitems/chesspiece.h"
+#include "utils.h"
 #include "constants.h"
 
+#include <stdexcept>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -73,8 +75,7 @@ bool BoardModel::isMovePossible(int oldCell, int newCell) const
     } else if(chessPiece->isMovePossible(newCell))
         return chessPiece->canJumpOver() || !hasObstaclesOnTheWay(oldCell, newCell);
     else
-        return false ; // TODO if jump
-
+        return false;
 }
 
 bool BoardModel::isSelectionPosible(int cellIndex) const
@@ -103,14 +104,17 @@ bool BoardModel::move(int oldCell, int newCell)
 
     try {
         QSharedPointer<ChessPiece> chessPiece2 = m_board.value(newCell);
+        QJsonObject history;
+        history["prev"] = QJsonArray({serializeCell(oldCell),serializeCell(newCell)});
         moveChessPiece(oldCell, newCell);
+        history["next"] = QJsonArray({serializeCell(oldCell),serializeCell(newCell)});
+        m_moveHistory.append(history);
 
         if(!chessPiece2.isNull() && chessPiece2->type() == ChessPieceType::King) {
             emit gameFinished(ChessPiece::colorName(m_currentPlayer));
             m_isGameOn = false;
         }
         m_currentPlayer = m_currentPlayer == PieceColor::White ? PieceColor::Black : PieceColor::White;
-        rememberBoard();
     } catch(std::exception& e) {
         qDebug() << e.what();
         Q_ASSERT_X(false, "BoardModel", e.what());
@@ -131,7 +135,7 @@ void BoardModel::initializeBoard()
     QByteArray saveData = loadFile.readAll();
 
     QJsonDocument loadDoc(QJsonDocument::fromJson(saveData));
-    loadBoardFromJSON(loadDoc.object());
+    loadBoardFromJSON(loadDoc.array());
 }
 
 void BoardModel::startGame()
@@ -139,9 +143,9 @@ void BoardModel::startGame()
     qDebug() << "startgame";
     initializeBoard();
     m_isGameOn = true;
+    m_currentPlayer = PieceColor::White;
     refreshBoard();
     clearHistory();
-    rememberBoard();
 }
 
 void BoardModel::stopGame()
@@ -164,10 +168,10 @@ void BoardModel::loadGame()
     QByteArray saveData = loadFile.readAll();
 
     QJsonDocument loadDoc(QJsonDocument::fromJson(saveData));
-    m_gameHistory = loadDoc.array();
-    if(m_gameHistory.count() > 0) {
+    m_moveHistory = loadDoc.array();
+    if(m_moveHistory.count() > 0) {
         m_step = 0;
-        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+        initializeBoard();
         emit gameLoaded();
         refreshBoard();
     }
@@ -186,25 +190,40 @@ void BoardModel::saveGame()
             return ;
         }
 
-        QJsonDocument saveDoc(m_gameHistory);
+        QJsonDocument saveDoc(m_moveHistory);
         saveFile.write(saveDoc.toJson());
     }
-    qDebug() << filePath;
 }
 
 void BoardModel::nextStep()
 {
-    if(m_step < m_gameHistory.count() - 1) {
-        ++m_step;
-        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+    try {
+        if(m_step < m_moveHistory.count()) {
+            QJsonArray cells = m_moveHistory.at(m_step).toObject()["next"].toArray();
+            for(QJsonValue val : cells) {
+                deserializeCell(val.toObject());
+            }
+            ++m_step;
+        }
+    } catch(std::exception &e) {
+        Q_ASSERT_X(false, "nextSetp", e.what());
+        qDebug() << e.what();
     }
 }
 
 void BoardModel::prevStep()
 {
-    if(m_step > 0) {
-        --m_step;
-        loadBoardFromJSON(m_gameHistory.at(m_step).toObject());
+    try {
+        if(m_step > 0) {
+            --m_step;
+            QJsonArray cells = m_moveHistory.at(m_step).toObject()["prev"].toArray();
+            for(QJsonValue val : cells) {
+                deserializeCell(val.toObject());
+            }
+        }
+    } catch(std::exception &e) {
+        Q_ASSERT_X(false, "prevSetp", e.what());
+        qDebug() << e.what();
     }
 }
 
@@ -223,11 +242,10 @@ bool BoardModel::hasObstaclesOnTheWay(int firstIndex, int secondIndex) const
     int deltaX = secondX - firstX;
     int deltaY = secondY - firstY;
 
-    auto abs = [] (int val) -> int { return val > 0 ? val : val * -1; };
     auto indexByXY = [] (int x, int y) -> int { return x + y * Constants::boardYSize;};
 
-    int absDeltaX = abs(deltaX);
-    int absDeltaY = abs(deltaY);
+    int absDeltaX = Utils::abs(deltaX);
+    int absDeltaY = Utils::abs(deltaY);
     const int signX = absDeltaX > 0 ? deltaX / absDeltaX : 1;
     const int signY = absDeltaY > 0 ? deltaY / absDeltaY : 1;
 
@@ -246,31 +264,60 @@ bool BoardModel::hasObstaclesOnTheWay(int firstIndex, int secondIndex) const
     return false;
 }
 
-void BoardModel::loadBoardFromJSON(const QJsonObject &data)
+void BoardModel::loadBoardFromJSON(const QJsonArray &data)
 {
     m_board.clear();
-    for(auto it = data.constBegin(); it != data.constEnd(); ++it) {
-        Q_ASSERT_X(!m_board.contains(it.key().toInt()), "loadingJSON", "Duplicated data");
-        ChessPieceType type = static_cast<ChessPieceType>(it.value().toObject()["piece"].toInt());
-        PieceColor color = static_cast<PieceColor>(it.value().toObject()["color"].toInt());
-        it.value().toObject()["color"].toInt();
-
-        const int cellIndex = it.key().toInt();
-        m_board.insert(cellIndex, QSharedPointer<ChessPiece>(ChessPiece::createChessPiece(type, color, cellIndex)));
+    try {
+        for(QJsonValue val : data)  {
+            deserializeCell(val.toObject());
+        }
+    } catch(std::exception &e) {
+        m_board.clear();
+        qDebug() << e.what();
     }
+
     refreshBoard();
 }
 
-QJsonObject BoardModel::saveBoardToJSON() const
+QJsonArray BoardModel::saveBoardToJSON() const
 {
-    QJsonObject result;
+    QJsonArray result;
     for(auto it = m_board.constBegin(); it != m_board.constEnd(); ++it) {
-        QJsonObject piece;
-        piece["piece"] = static_cast<int>(it.value()->type());
-        piece["color"] = static_cast<int>(it.value()->color());
-        result[QString::number(it.key())] = piece;
+        result.append(serializeCell(it.key()));
     }
     return result;
+}
+
+QJsonObject BoardModel::serializeCell(int cellIndex) const
+{
+    QJsonObject res;
+    if(!isCellEmpty(cellIndex)) {
+        QSharedPointer<ChessPiece> piece = m_board.value(cellIndex);
+        res["type"] = static_cast<int>(piece->type());
+        res["color"] = static_cast<int>(piece->color());
+    }
+    res["cell"] = cellIndex;
+
+    return res;
+}
+
+void BoardModel::deserializeCell(const QJsonObject &obj)
+{
+    const QStringList keys = obj.keys();
+    if(!obj.isEmpty() && keys.contains("cell")) {
+        const int cellIndex = obj["cell"].toInt();
+        if(keys.contains("type") && keys.contains("color")) {
+            ChessPieceType type = static_cast<ChessPieceType>(obj["type"].toInt());
+            PieceColor color = static_cast<PieceColor>(obj["color"].toInt());
+
+            m_board.insert(cellIndex, QSharedPointer<ChessPiece>(ChessPiece::createChessPiece(type, color, cellIndex)));
+        } else {
+            m_board.remove(cellIndex);
+        }
+        emit dataChanged(index(cellIndex), index(cellIndex));
+    } else {
+        throw std::logic_error("cannot deserialize cell from json object");
+    }
 }
 
 void BoardModel::moveChessPiece(int oldCell, int newCell)
@@ -284,11 +331,6 @@ void BoardModel::moveChessPiece(int oldCell, int newCell)
     emit dataChanged(index(newCell), index(newCell));
 }
 
-void BoardModel::rememberBoard()
-{
-    m_gameHistory.append(saveBoardToJSON());
-}
-
 void BoardModel::refreshBoard()
 {
     emit dataChanged(index(0), index(Constants::boardTotalSize-1));
@@ -296,6 +338,6 @@ void BoardModel::refreshBoard()
 
 void BoardModel::clearHistory()
 {
-    m_gameHistory = QJsonArray();
+    m_moveHistory = QJsonArray();
 }
 
